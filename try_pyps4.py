@@ -17,13 +17,14 @@ class MyController(Controller):
         print("Goodbye world")
 
     def on_R3_down(self, value):
-        value /= 128
+        value /= 128  # change the range to 0-255
         value += 51
-        value /= 1.2
+        value /= 1.2  # change the range to 51-255
         value = int(value)
         if value < 50:
             value = 0
-        bus.write_i2c_block_data(motor2040_addr, 0x01, [value])  # Register 0x01
+        bus.write_i2c_block_data(motor2040_addr, 0x01, [value])
+        # Register 0x01 for backward
         print(value)
 
     def on_R3_up(self, value):
