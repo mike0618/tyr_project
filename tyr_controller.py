@@ -1,3 +1,4 @@
+#!./venv/bin/python
 from pyPS4Controller.controller import Controller
 import smbus
 from adafruit_servokit import ServoKit
@@ -10,8 +11,8 @@ motor2040_addr = 0x44  # Replace with actual address
 MAX_RANGE = 180
 HALF_RANGE = MAX_RANGE // 2
 COEF = 32767 // HALF_RANGE
-_dr = 100  # distance between the opposite wheels, adjust after assembling
-_a = 100  # distance between the adjacent wheels, adjust after assembling
+_dr = 255  # distance between the opposite wheels, adjust after assembling
+_a = 160  # distance between the adjacent wheels, adjust after assembling
 servos = None
 try:
     kit = ServoKit(channels=16)
@@ -49,10 +50,11 @@ class MyController(Controller):
         r_ = (r**2 + _a**2) ** 0.5
         R = r + _dr
         R_ = (R**2 + _a**2) ** 0.5
+        coef = v0 / R_
         self.beta = round(degrees(atan(_a / R)))
-        self.v1 = round(v0 * R / R_)
-        self.v2 = round(v0 * r_ / R_)
-        self.v3 = round(v0 * r / R_)
+        self.v1 = round(R * coef)
+        self.v2 = round(r_ * coef)
+        self.v3 = round(r * coef)
 
     def move(self):
         v0 = self.v0
