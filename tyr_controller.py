@@ -7,7 +7,8 @@ from math import pi, tan, atan, degrees, radians
 from threading import Thread
 
 bus = smbus.SMBus(1)  # Use I2C bus 1
-motor2040_addr = 0x44  # Replace with actual address
+motor2040R = 0x44  # Replace with actual address
+motor2040L = 0x48  # Replace with actual address
 MAX_RANGE = 180
 HALF_RANGE = MAX_RANGE // 2
 COEF = 32767 // HALF_RANGE
@@ -30,6 +31,7 @@ class MyController(Controller):
         Controller.__init__(self, **kwargs)
         self.car_mode = True
         # TODO: add other modes: rover and parallel
+        # For rover mode: v1 = v0*128/205; angle 51.45
         self.v0 = 0
         self.v1 = 0
         self.v2 = 0
@@ -64,9 +66,20 @@ class MyController(Controller):
             i = 0
         try:
             # TODO: add 2nd motor2040 board and left-right turn handling
-            bus.write_i2c_block_data(motor2040_addr, 0x00 + i, [v0])
-            bus.write_i2c_block_data(motor2040_addr, 0x02 + i, [self.v1])
-            bus.write_i2c_block_data(motor2040_addr, 0x04 + i, [v0])
+            if self.alpha > 0: # turn right
+                bus.write_i2c_block_data(motor2040R, 0x00 + i, [self.v2])
+                bus.write_i2c_block_data(motor2040R, 0x02 + i, [self.v3])
+                bus.write_i2c_block_data(motor2040R, 0x04 + i, [self.v2])
+                bus.write_i2c_block_data(motor2040L, 0x00 + i, [v0])
+                bus.write_i2c_block_data(motor2040L, 0x02 + i, [self.v1])
+                bus.write_i2c_block_data(motor2040L, 0x04 + i, [v0])
+            else: # turn left
+                bus.write_i2c_block_data(motor2040L, 0x00 + i, [self.v2])
+                bus.write_i2c_block_data(motor2040L, 0x02 + i, [self.v3])
+                bus.write_i2c_block_data(motor2040L, 0x04 + i, [self.v2])
+                bus.write_i2c_block_data(motor2040R, 0x00 + i, [v0])
+                bus.write_i2c_block_data(motor2040R, 0x02 + i, [self.v1])
+                bus.write_i2c_block_data(motor2040R, 0x04 + i, [v0])
         except OSError:
             print("motor2040 is not connected")
 
@@ -129,7 +142,9 @@ class MyController(Controller):
         if servos:
             # TODO: send angle to all servos
             servos[0].angle = beta
-            servos[1].angle = alpha
+            servos[3].angle = alpha
+            servos[2].angle = HALF_RANGE + self.beta
+            servos[5].angle = HALF_RANGE - self.alpha
         self.move()
 
     def on_R3_right(self, value):
@@ -142,7 +157,9 @@ class MyController(Controller):
         if servos:
             # TODO: send angle to all servos
             servos[0].angle = alpha
-            servos[1].angle = beta
+            servos[3].angle = beta
+            servos[2].angle = HALF_RANGE - self.alpha
+            servos[5].angle = HALF_RANGE - self.beta
         self.move()
 
     def send_data(self):
