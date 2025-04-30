@@ -3,17 +3,18 @@ from pyPS4Controller.controller import Controller
 import smbus
 from adafruit_servokit import ServoKit
 from time import sleep
-from math import pi, tan, atan, degrees, radians
-from threading import Thread
+from math import tan, atan, degrees, radians
 
-bus = smbus.SMBus(1)  # Use I2C bus 1
-motor2040R = 0x44  # Replace with actual address
-motor2040L = 0x48  # Replace with actual address
+bus = smbus.SMBus(1)
+motor2040R = 0x44
+motor2040L = 0x48
+R_ANGLE = 51.45
+R_COEF = 0.624
 MAX_RANGE = 180
 HALF_RANGE = MAX_RANGE // 2
 COEF = 32767 // HALF_RANGE
-_dr = 255  # distance between the opposite wheels, adjust after assembling
-_a = 160  # distance between the adjacent wheels, adjust after assembling
+_dr = 255  # distance between the opposite wheels
+_a = 160  # distance between the adjacent wheels
 servos = None
 try:
     kit = ServoKit(channels=16)
@@ -29,17 +30,30 @@ except ValueError:
 class MyController(Controller):
     def __init__(self, **kwargs):
         Controller.__init__(self, **kwargs)
-        self.car_mode = True
-        # TODO: add other modes: rover and parallel
-        # For rover mode: v1 = v0*128/205; angle 51.45
-        self.v0 = 0
+        self.car_mode = True  # car/parallel
+        self.rover_mode = False
+        # TODO: Switch between car/parallel modes with X button, rover_mode - O button
+        self.v0 = 0  # original speed from controller
         self.v1 = 0
         self.v2 = 0
         self.v3 = 0
-        self.alpha = 0
+        self.alpha = 0  # original angle from controller
         self.beta = 0
 
-    def for_car_mode(self):
+    def straight(self):
+        if not servos:
+            return False
+        for i in range(6):
+            servos[i].angle = HALF_RANGE
+        sleep(1)  # let servos complete turn
+
+    def spin(self, controller, reg, val):
+        try:
+            bus.write_i2c_block_data(controller, reg, val)
+        except OSError:
+            print("motor2040 is not connected")
+
+    def car_calc(self):
         """Calculate the secondary wheel angle and speeds for car mode"""
         # these are the most complicated calculations here
         alpha = abs(self.alpha)
@@ -58,30 +72,91 @@ class MyController(Controller):
         self.v2 = round(r_ * coef)
         self.v3 = round(r * coef)
 
-    def move(self):
+    def car_turn(self):
+        if not servos:
+            return False
+        if self.alpha > 0:  # turn right
+            servos[0].angle = HALF_RANGE + self.alpha
+            servos[2].angle = HALF_RANGE - self.alpha
+            servos[3].angle = HALF_RANGE + self.beta
+            servos[5].angle = HALF_RANGE - self.beta
+        else:  # turn left
+            servos[0].angle = HALF_RANGE - self.beta
+            servos[2].angle = HALF_RANGE + self.beta
+            servos[3].angle = HALF_RANGE + self.alpha
+            servos[5].angle = HALF_RANGE - self.alpha
+
+    def car_move(self):
         v0 = self.v0
         i = 1
         if self.v0 < 0:
             v0 = -v0
             i = 0
-        try:
-            # TODO: add 2nd motor2040 board and left-right turn handling
-            if self.alpha > 0: # turn right
-                bus.write_i2c_block_data(motor2040R, 0x00 + i, [self.v2])
-                bus.write_i2c_block_data(motor2040R, 0x02 + i, [self.v3])
-                bus.write_i2c_block_data(motor2040R, 0x04 + i, [self.v2])
-                bus.write_i2c_block_data(motor2040L, 0x00 + i, [v0])
-                bus.write_i2c_block_data(motor2040L, 0x02 + i, [self.v1])
-                bus.write_i2c_block_data(motor2040L, 0x04 + i, [v0])
-            else: # turn left
-                bus.write_i2c_block_data(motor2040L, 0x00 + i, [self.v2])
-                bus.write_i2c_block_data(motor2040L, 0x02 + i, [self.v3])
-                bus.write_i2c_block_data(motor2040L, 0x04 + i, [self.v2])
-                bus.write_i2c_block_data(motor2040R, 0x00 + i, [v0])
-                bus.write_i2c_block_data(motor2040R, 0x02 + i, [self.v1])
-                bus.write_i2c_block_data(motor2040R, 0x04 + i, [v0])
-        except OSError:
-            print("motor2040 is not connected")
+        c1, c2 = motor2040L, motor2040R
+        if self.alpha > 0:
+            c2, c1 = motor2040L, motor2040R
+        self.spin(c1, 0x00 + i, [self.v2])
+        self.spin(c1, 0x02 + i, [self.v3])
+        self.spin(c1, 0x04 + i, [self.v2])
+        self.spin(c2, 0x00 + i, [v0])
+        self.spin(c2, 0x02 + i, [self.v1])
+        self.spin(c2, 0x04 + i, [v0])
+
+    def rover_turn(self):
+        if not servos:
+            return False
+        servos[0].angle = HALF_RANGE - R_ANGLE
+        servos[1].angle = HALF_RANGE
+        servos[2].angle = HALF_RANGE + R_ANGLE
+        servos[3].angle = HALF_RANGE + R_ANGLE
+        servos[4].angle = HALF_RANGE
+        servos[5].angle = HALF_RANGE - R_ANGLE
+        sleep(1)  # let the servos complete turn
+
+    def rover_move(self):
+        v0 = self.v0
+        c1, c2 = motor2040L, motor2040R
+        if self.v0 < 0:
+            v0 = -v0
+            c2, c1 = motor2040L, motor2040R
+        v1 = v0 * R_COEF
+        self.spin(c1, 0x00, [v0])
+        self.spin(c1, 0x02, [v1])
+        self.spin(c1, 0x04, [v0])
+        self.spin(c2, 0x01, [v0])
+        self.spin(c2, 0x03, [v1])
+        self.spin(c2, 0x05, [v0])
+
+    def turning(self):
+        if self.rover_mode:
+            return False
+        if self.car_mode:
+            self.car_calc()
+            self.car_turn()
+            self.car_move()  # important to set a new calculated speed
+        elif servos:  # parallel
+            for i in range(6):
+                servos[i].angle = HALF_RANGE + self.alpha
+
+    def driving(self):
+        if self.rover_mode:
+            self.rover_move()
+        elif self.car_mode:
+            self.car_calc()
+            self.car_move()
+        else:  # parallel
+            v0 = self.v0
+            i = 1
+            if self.v0 < 0:
+                v0 = -v0
+                i = 0
+            c1, c2 = motor2040L, motor2040R
+            self.spin(c1, 0x00 + i, [v0])
+            self.spin(c1, 0x02 + i, [v0])
+            self.spin(c1, 0x04 + i, [v0])
+            self.spin(c2, 0x00 + i, [v0])
+            self.spin(c2, 0x02 + i, [v0])
+            self.spin(c2, 0x04 + i, [v0])
 
     def on_R3_down(self, value):
         # Max value of remote range is 32767
@@ -89,82 +164,34 @@ class MyController(Controller):
         value /= 128  # Brings number down to the 255 range
         value += 51  # Adds 51 to change the beginning of range
         value /= 1.2  # Brings number back down to 255 range
-        value = int(
-            value
-        )  # Gets rid of decimal points because the bus only takes whole numbers
+        value = int(value)  # the bus only takes whole numbers
         # Gives the controller a dead zone which helps the wheel stop
         if value < 50:
             value = 0
         self.v0 = value
-        self.for_car_mode()
-        # Makes the wheel turn the speed of the value given by controller
-        self.move()  # register 1 - backward
-        # TODO: move all motors
-        # Retuns value for trouble shooting
-        print(value)
+        self.driving()
 
     def on_R3_up(self, value):
         # Max value of remote is -32767
-        # Max value of remote range is 32767
-        # This calculation is needed because numbers from the range of 0 - 255 can be used when determining wheel speed
         value /= 128  # Brings number down to the 255 range
         value -= 51  # Adds 51 to bring to to 306
         value /= 1.2  # Brings number back down to 255 range
-        value = int(
-            value
-        )  # Gets rid of decimal points because the bus only takes whole numbers
-        # Gives the controller a dead zone for the wheel to stop
+        value = int(value)  # the bus only takes whole numbers
         if value > -50:
             value = 0
-        self.v0 = value
-        self.for_car_mode()
-        # Makes the wheel turn the speed of the value given by controller
-        self.move()  # register 0 - forward
-        # TODO: move all motors
-        # Retuns value for trouble shooting
-        print(value)
-
-    # Stops the controller when the thumb stick is at rest
-    def on_R3_y_at_rest(self):
-        self.v0 = 0
-        self.for_car_mode()
-        self.move()
-        print("Stop")
+        self.v0 = value  # it is negative
+        self.driving()
 
     def on_R3_left(self, value):
         value //= COEF
         value += 1
-        self.alpha = value
-        self.for_car_mode()
-        print(self.alpha, self.beta, self.v0, self.v1, self.v2, self.v3)
-        alpha = HALF_RANGE + self.alpha
-        beta = HALF_RANGE - self.beta
-        if servos:
-            # TODO: send angle to all servos
-            servos[0].angle = beta
-            servos[3].angle = alpha
-            servos[2].angle = HALF_RANGE + self.beta
-            servos[5].angle = HALF_RANGE - self.alpha
-        self.move()
+        self.alpha = value  # it is negative
+        self.turning()
 
     def on_R3_right(self, value):
         value //= COEF
         self.alpha = value
-        self.for_car_mode()
-        print(self.alpha, self.beta, self.v0, self.v1, self.v2, self.v3)
-        alpha = HALF_RANGE + self.alpha
-        beta = HALF_RANGE + self.beta
-        if servos:
-            # TODO: send angle to all servos
-            servos[0].angle = alpha
-            servos[3].angle = beta
-            servos[2].angle = HALF_RANGE - self.alpha
-            servos[5].angle = HALF_RANGE - self.beta
-        self.move()
-
-    def send_data(self):
-        while True:
-            sleep(0.01)
+        self.turning()
 
 
 controller = MyController(interface="/dev/input/js0", connecting_using_ds4drv=False)
