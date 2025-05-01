@@ -1,4 +1,3 @@
-import time
 import board
 from i2ctarget import I2CTarget
 import pwmio
@@ -47,7 +46,8 @@ with I2CTarget(board.SCL, board.SDA, (0x48,)) as device:
                     motC.throttle = -val
                 elif reg == 5:
                     motC.throttle = val
-                print(reg, val)
+                # print(reg, val)
                 reg = None
         except Exception as e:
-            print(e)
+            # print(e)
+            pass
