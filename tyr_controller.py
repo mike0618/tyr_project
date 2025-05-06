@@ -44,7 +44,7 @@ class MyController(Controller):
             return False
         for i in range(6):
             servos[i].angle = HALF_RANGE
-        sleep(1)  # let servos complete turn
+        sleep(0.5)  # let servos complete turn
         return True
 
     def spin(self, controller, reg, val):
@@ -111,7 +111,7 @@ class MyController(Controller):
         servos[3].angle = HALF_RANGE + R_ANGLE
         servos[4].angle = HALF_RANGE
         servos[5].angle = HALF_RANGE - R_ANGLE
-        sleep(1)  # let the servos complete turn
+        sleep(0.5)  # let the servos complete turn
         return True  # switch successful
 
     def rover_move(self):
@@ -195,12 +195,14 @@ class MyController(Controller):
         self.turning()
 
     def on_x_press(self):  # switch between car/parallel modes
-        self.stop()
+        self.stop
+        if self.rover_mode:
+            self.rover_mode = not self.straight()
         if self.straight():
             self.car_mode = not self.car_mode
 
     def on_circle_press(self):  # switch rover mode
-        self.stop()
+        self.stop
         if self.rover_mode:
             self.rover_mode = not self.straight()
         else:
@@ -213,4 +215,4 @@ class MyController(Controller):
 
 controller = MyController(interface="/dev/input/js0", connecting_using_ds4drv=False)
 # you can start listening before controller is paired, as long as you pair it within the timeout window
-controller.listen(timeout=60, on_disconnect=controller.stop())
+controller.listen(timeout=60, on_disconnect=controller.stop)
