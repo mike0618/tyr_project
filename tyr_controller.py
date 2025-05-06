@@ -183,13 +183,13 @@ class MyController(Controller):
         self.v0 = value  # it is negative
         self.driving()
 
-    def on_R3_left(self, value):
+    def on_L3_left(self, value):
         value //= COEF
         value += 1
         self.alpha = value  # it is negative
         self.turning()
 
-    def on_R3_right(self, value):
+    def on_L3_right(self, value):
         value //= COEF
         self.alpha = value
         self.turning()
