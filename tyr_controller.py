@@ -196,8 +196,7 @@ class MyController(Controller):
 
     def on_x_press(self):  # switch between car/parallel modes
         self.stop
-        if self.rover_mode:
-            self.rover_mode = not self.straight()
+        self.rover_mode = False
         if self.straight():
             self.car_mode = not self.car_mode
 
