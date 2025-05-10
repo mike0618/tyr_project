@@ -40,7 +40,15 @@ class MyController(Controller):
         self.alpha = 0  # original angle from controller
         self.beta = 0
 
+    def spin(self, controller, reg, val):
+        """Low Level Function to set motor rotation"""
+        try:
+            bus.write_i2c_block_data(controller, reg, val)
+        except OSError:
+            print("motor2040 is not connected")
+
     def straight(self):
+        """Set the wheels straight"""
         if not servos:
             return False
         for i in range(6):
@@ -48,11 +56,7 @@ class MyController(Controller):
         sleep(0.5)  # let servos complete turn
         return True
 
-    def spin(self, controller, reg, val):
-        try:
-            bus.write_i2c_block_data(controller, reg, val)
-        except OSError:
-            print("motor2040 is not connected")
+    ### Car Mode Functions ###
 
     def car_calc(self):
         """Calculate the secondary wheel angle and speeds for car mode"""
@@ -99,6 +103,8 @@ class MyController(Controller):
         self.spin(c2, 0x02 + (self.v0 > 0), [self.v1])
         self.spin(c2, 0x04 + (self.v0 > 0), [v0])
 
+    ### Rover Mode Functions ###
+
     def rover_turn(self):
         if not servos:
             return False
@@ -120,6 +126,8 @@ class MyController(Controller):
         self.spin(RMC, 0x00 + (self.v0 > 0), [v0])
         self.spin(RMC, 0x02 + (self.v0 > 0), [v1])
         self.spin(RMC, 0x04 + (self.v0 > 0), [v0])
+
+    ### High Level Functions ###
 
     def turning(self):
         if self.rover_mode:
@@ -147,28 +155,27 @@ class MyController(Controller):
             self.spin(RMC, 0x02 + (self.v0 > 0), [v0])
             self.spin(RMC, 0x04 + (self.v0 > 0), [v0])
 
-    def on_R3_down(self, value):
-        # Max value of remote range is 32767
-        # Adjust the range to 42 - 255 the bus can use
-        value = int((value + 6503) / 154)
-        # Gives the controller a dead zone which helps the wheel stop
-        self.v0 = value if value > 50 else 0
+    ### Control Functions ###
+
+    def on_R3_down(self, value):  # max value is 32767
+        """Adjust the range to 42 - 255 the bus can use and give the controller a dead zone to stop the wheels"""
+        self.v0 = int((value + 6503) / 154) if value > 7000 else 0
         self.driving()
 
-    def on_R3_up(self, value):
-        # Max value of remote is -32767
-        # Adjust the range to (-42) - (-255) the bus can use
-        value = int((value - 6503) / 154)
-        self.v0 = value if value < -50 else 0
+    def on_R3_up(self, value):  # the value is negative
+        """Adjust the range to (-42) - (-255) the bus can use and give the controller a dead zone to stop the wheels"""
+        self.v0 = int((value - 6503) / 154) if value < -7000 else 0
         self.driving()
 
-    def on_L3_left(self, value):
-        self.alpha = 1 + value // COEF  # it is negative
+    def on_L3_left(self, value):  # the value is negative
+        self.alpha = 1 + value // COEF
         self.turning()
 
     def on_L3_right(self, value):
         self.alpha = value // COEF
         self.turning()
+
+    ### Switch Functions ###
 
     def on_x_press(self):  # switch between car/parallel modes
         self.stop
@@ -176,17 +183,16 @@ class MyController(Controller):
         if self.straight():
             self.car_mode = not self.car_mode
 
-    def on_options_press(self):  # For turing the pi off safely
-        self.stop
-        # This is using imported script to turn off the pi
-        shutdown_raspi.shutdown_rpi()
-
     def on_circle_press(self):  # switch rover mode
         self.stop
         if self.rover_mode:
             self.rover_mode = not self.straight()
         else:
             self.rover_mode = self.rover_turn()
+
+    def on_options_press(self):  # For turing the pi off safely
+        self.stop
+        shutdown_raspi.shutdown_rpi()  # use the imported module
 
     def stop(self):
         self.v0 = self.v1 = self.v2 = self.v3 = 0
