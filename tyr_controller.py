@@ -14,8 +14,7 @@ R_COEF = 0.624  # calc from the rover dimentions
 FULL_RANGE = 180
 HALF_RANGE = FULL_RANGE // 2  # straight wheels position
 COEF = 32767 // HALF_RANGE
-DR = 255  # distance between the opposite wheels
-A = 160  # distance between the adjacent wheels
+DR = 255 / 160  # proportional distance between the opposite wheels
 servos = None
 try:
     kit = ServoKit(channels=16)
@@ -60,19 +59,19 @@ class MyController(Controller):
 
     def car_calc(self):
         """Calculate the secondary wheel angle and speeds for car mode"""
-        # these are the most complicated calculations here
+        # these are the most complicated calculations here, 1 is proportional adjacent distance
         alpha = abs(self.alpha)
         v0 = abs(self.v0)
         if alpha < 3:  # threshold and avoid zero division
             self.beta = alpha
             self.v1 = self.v2 = self.v3 = v0
             return True
-        r = A / tan(radians(alpha))
-        r_ = (r**2 + A**2) ** 0.5
+        r = 1 / tan(radians(alpha))
+        r_ = (r**2 + 1) ** 0.5
         R = r + DR
-        R_ = (R**2 + A**2) ** 0.5
+        R_ = (R**2 + 1) ** 0.5
         coef = v0 / R_
-        self.beta = round(degrees(atan(A / R)))
+        self.beta = round(degrees(atan(1 / R)))
         self.v1 = round(R * coef)
         self.v2 = round(r_ * coef)
         self.v3 = round(r * coef)
