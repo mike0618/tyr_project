@@ -4,24 +4,25 @@ import smbus
 from adafruit_servokit import ServoKit
 from time import sleep
 from math import tan, atan, degrees, radians
+import shutdown_raspi
 
 bus = smbus.SMBus(1)
-motor2040R = 0x44
-motor2040L = 0x48
+RMC = 0x44  # right motor2040 controller addr
+LMC = 0x48  # left motor2040 controller addr
 R_ANGLE = 52  # calc from the rover dimentions
 R_COEF = 0.624  # calc from the rover dimentions
-MAX_RANGE = 180
-HALF_RANGE = MAX_RANGE // 2
+FULL_RANGE = 180
+HALF_RANGE = FULL_RANGE // 2  # straight wheels position
 COEF = 32767 // HALF_RANGE
-_dr = 255  # distance between the opposite wheels
-_a = 160  # distance between the adjacent wheels
+DR = 255  # distance between the opposite wheels
+A = 160  # distance between the adjacent wheels
 servos = None
 try:
     kit = ServoKit(channels=16)
     servos = [kit.servo[i] for i in range(6)]
     for i in range(6):
         servos[i].set_pulse_width_range(min_pulse=470, max_pulse=2520)
-        servos[i].actuation_range = MAX_RANGE
+        servos[i].actuation_range = FULL_RANGE
         servos[i].angle = HALF_RANGE
 except ValueError:
     print("Servo controller is not connected")
@@ -62,12 +63,12 @@ class MyController(Controller):
             self.beta = alpha
             self.v1 = self.v2 = self.v3 = v0
             return True
-        r = _a / tan(radians(alpha))
-        r_ = (r**2 + _a**2) ** 0.5
-        R = r + _dr
-        R_ = (R**2 + _a**2) ** 0.5
+        r = A / tan(radians(alpha))
+        r_ = (r**2 + A**2) ** 0.5
+        R = r + DR
+        R_ = (R**2 + A**2) ** 0.5
         coef = v0 / R_
-        self.beta = round(degrees(atan(_a / R)))
+        self.beta = round(degrees(atan(A / R)))
         self.v1 = round(R * coef)
         self.v2 = round(r_ * coef)
         self.v3 = round(r * coef)
@@ -87,20 +88,16 @@ class MyController(Controller):
             servos[5].angle = HALF_RANGE - self.alpha
 
     def car_move(self):
-        v0 = self.v0
-        i = 1
-        if self.v0 < 0:
-            v0 = -v0
-            i = 0
-        c1, c2 = motor2040L, motor2040R
+        v0 = abs(self.v0)
+        c1, c2 = LMC, RMC
         if self.alpha > 0:
-            c2, c1 = motor2040L, motor2040R
-        self.spin(c1, 0x00 + i, [self.v2])
-        self.spin(c1, 0x02 + i, [self.v3])
-        self.spin(c1, 0x04 + i, [self.v2])
-        self.spin(c2, 0x00 + i, [v0])
-        self.spin(c2, 0x02 + i, [self.v1])
-        self.spin(c2, 0x04 + i, [v0])
+            c2, c1 = LMC, RMC
+        self.spin(c1, 0x00 + (self.v0 > 0), [self.v2])
+        self.spin(c1, 0x02 + (self.v0 > 0), [self.v3])
+        self.spin(c1, 0x04 + (self.v0 > 0), [self.v2])
+        self.spin(c2, 0x00 + (self.v0 > 0), [v0])
+        self.spin(c2, 0x02 + (self.v0 > 0), [self.v1])
+        self.spin(c2, 0x04 + (self.v0 > 0), [v0])
 
     def rover_turn(self):
         if not servos:
@@ -115,18 +112,14 @@ class MyController(Controller):
         return True  # switch successful
 
     def rover_move(self):
-        v0 = self.v0
-        c1, c2 = motor2040L, motor2040R
-        if self.v0 < 0:
-            v0 = -v0
-            c2, c1 = motor2040L, motor2040R
+        v0 = abs(self.v0)
         v1 = round(v0 * R_COEF)
-        self.spin(c1, 0x00, [v0])
-        self.spin(c1, 0x02, [v1])
-        self.spin(c1, 0x04, [v0])
-        self.spin(c2, 0x01, [v0])
-        self.spin(c2, 0x03, [v1])
-        self.spin(c2, 0x05, [v0])
+        self.spin(LMC, 0x00 + (self.v0 < 0), [v0])
+        self.spin(LMC, 0x02 + (self.v0 < 0), [v1])
+        self.spin(LMC, 0x04 + (self.v0 < 0), [v0])
+        self.spin(RMC, 0x00 + (self.v0 > 0), [v0])
+        self.spin(RMC, 0x02 + (self.v0 > 0), [v1])
+        self.spin(RMC, 0x04 + (self.v0 > 0), [v0])
 
     def turning(self):
         if self.rover_mode:
@@ -146,52 +139,35 @@ class MyController(Controller):
             self.car_calc()
             self.car_move()
         else:  # parallel
-            v0 = self.v0
-            i = 1
-            if self.v0 < 0:
-                v0 = -v0
-                i = 0
-            c1, c2 = motor2040L, motor2040R
-            self.spin(c1, 0x00 + i, [v0])
-            self.spin(c1, 0x02 + i, [v0])
-            self.spin(c1, 0x04 + i, [v0])
-            self.spin(c2, 0x00 + i, [v0])
-            self.spin(c2, 0x02 + i, [v0])
-            self.spin(c2, 0x04 + i, [v0])
+            v0 = abs(self.v0)
+            self.spin(LMC, 0x00 + (self.v0 > 0), [v0])
+            self.spin(LMC, 0x02 + (self.v0 > 0), [v0])
+            self.spin(LMC, 0x04 + (self.v0 > 0), [v0])
+            self.spin(RMC, 0x00 + (self.v0 > 0), [v0])
+            self.spin(RMC, 0x02 + (self.v0 > 0), [v0])
+            self.spin(RMC, 0x04 + (self.v0 > 0), [v0])
 
     def on_R3_down(self, value):
         # Max value of remote range is 32767
-        # This calculation is needed because numbers from the range of 0 - 255 can be used when determining wheel speed
-        value /= 128  # Brings number down to the 255 range
-        value += 51  # Adds 51 to change the beginning of range
-        value /= 1.2  # Brings number back down to 255 range
-        value = int(value)  # the bus only takes whole numbers
+        # Adjust the range to 42 - 255 the bus can use
+        value = int((value + 6503) / 154)
         # Gives the controller a dead zone which helps the wheel stop
-        if value < 50:
-            value = 0
-        self.v0 = value
+        self.v0 = value if value > 50 else 0
         self.driving()
 
     def on_R3_up(self, value):
         # Max value of remote is -32767
-        value /= 128  # Brings number down to the 255 range
-        value -= 51  # Adds 51 to bring to to 306
-        value /= 1.2  # Brings number back down to 255 range
-        value = int(value)  # the bus only takes whole numbers
-        if value > -50:
-            value = 0
-        self.v0 = value  # it is negative
+        # Adjust the range to (-42) - (-255) the bus can use
+        value = int((value - 6503) / 154)
+        self.v0 = value if value < -50 else 0
         self.driving()
 
     def on_L3_left(self, value):
-        value //= COEF
-        value += 1
-        self.alpha = value  # it is negative
+        self.alpha = 1 + value // COEF  # it is negative
         self.turning()
 
     def on_L3_right(self, value):
-        value //= COEF
-        self.alpha = value
+        self.alpha = value // COEF
         self.turning()
 
     def on_x_press(self):  # switch between car/parallel modes
@@ -199,6 +175,11 @@ class MyController(Controller):
         self.rover_mode = False
         if self.straight():
             self.car_mode = not self.car_mode
+
+    def on_options_press(self):  # For turing the pi off safely
+        self.stop
+        # This is using imported script to turn off the pi
+        shutdown_raspi.shutdown_rpi()
 
     def on_circle_press(self):  # switch rover mode
         self.stop
