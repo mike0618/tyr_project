@@ -19,7 +19,9 @@
 
 ## Controls
 
-- Left stick Right/Left to make turn
+- Left stick Right/Left to make turn (*in Two sticks mode*)
 - Right stick Up/Down to move Forward/Backward
+- Right stick Right/Left to make turn (*in One stick mode*)
 - X button to switch between Car/Parallel modes
 - O button to switch the Rover mode on/off
+- Δ button to switch between One/Two sticks control
