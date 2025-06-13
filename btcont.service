@@ -1,0 +1,9 @@
+[Unit]
+Description=Connect Bluetooth Controller
+
+[Service]
+Type=oneshot
+ExecStart=bluetoothctl connect FC:DC:2C:EB:BF:37
+
+[Install]
+WantedBy=default.target

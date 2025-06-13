@@ -1,0 +1,10 @@
+[Unit]
+Description=Start Tyr Controller
+After=btcont.service
+
+[Service]
+Type=simple
+ExecStart=/home/pi/Code/venv/bin/python /home/pi/Code/tyr_controller.py
+
+[Install]
+WantedBy=default.target
