@@ -1,9 +1,12 @@
 [Unit]
 Description=Connect Bluetooth Controller
+After=bluetooth.service
+Requires=bluetooth.service
 
 [Service]
-Type=oneshot
-ExecStart=bluetoothctl connect FC:DC:2C:EB:BF:37
+ExecStart=until bluetoothctl connect FC:DC:2C:EB:BF:37; do: sleep 10; done
+Restart=on-failure
+RestartSec=15
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target
